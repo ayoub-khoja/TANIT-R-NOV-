@@ -9,6 +9,43 @@ function App() {
     projects: 0,
     clients: 0
   });
+  const [modalAvisOpen, setModalAvisOpen] = useState(false);
+
+  // Liste dynamique des avis/temoignages
+  const [avis, setAvis] = useState([]);
+  const [avisIndex, setAvisIndex] = useState(0); // index du carrousel
+
+  // Nombre d'avis à afficher à la fois
+  const AVIS_PAR_PAGE = 2;
+  const avisAffiches = avis.slice(avisIndex, avisIndex + AVIS_PAR_PAGE);
+
+  const handlePrevAvis = () => {
+    setAvisIndex((prev) =>
+      prev === 0 ? Math.max(avis.length - AVIS_PAR_PAGE, 0) : prev - 1
+    );
+  };
+  const handleNextAvis = () => {
+    setAvisIndex((prev) =>
+      prev + AVIS_PAR_PAGE >= avis.length ? 0 : prev + 1
+    );
+  };
+
+  // Définir l'URL de l'API dynamiquement selon l'environnement
+  const API_URL = process.env.NODE_ENV === 'development'
+    ? 'http://localhost:5000/avis'
+    : '/api/avis';
+
+  // Charger les avis au montage
+  useEffect(() => {
+    fetch(API_URL)
+      .then(res => res.json())
+      .then(data => setAvis(data));
+  }, [API_URL]);
+
+  // Ajouter un avis dynamiquement
+  const ajouterAvis = (nouvelAvis) => {
+    setAvis(prev => [...prev, nouvelAvis]);
+  };
 
   // Données pour la galerie avant/après
   const beforeAfterImages = [
@@ -277,27 +314,24 @@ function App() {
         <div className="container">
           <h2>⭐ Témoignages Clients</h2>
           <p className="testimonials-subtitle">Ce que disent nos clients satisfaits</p>
-          
-          <div className="testimonials-grid">
-            {testimonials.map((testimonial) => (
-              <div key={testimonial.id} className="testimonial-card">
-                <div className="testimonial-header">
-                  <div className="testimonial-avatar">{testimonial.avatar}</div>
-                  <div className="testimonial-info">
-                    <h4>{testimonial.name}</h4>
-                    <span className="testimonial-city">{testimonial.city}</span>
-                  </div>
-                  <div className="testimonial-rating">
-                    {[...Array(testimonial.rating)].map((_, i) => (
-                      <span key={i} className="star">⭐</span>
-                    ))}
-                  </div>
-                </div>
-                <p className="testimonial-text">"{testimonial.text}"</p>
-              </div>
-            ))}
+          <button className="btn-ajouter-avis" onClick={() => setModalAvisOpen(true)}>
+            Ajouter un avis
+          </button>
+          <div className="testimonials-carousel">
+            {avis.length > AVIS_PAR_PAGE && (
+              <button className="avis-arrow left" onClick={handlePrevAvis}>&lt;</button>
+            )}
+            <div className="testimonials-grid">
+              {avisAffiches.map((testimonial, idx) => (
+                <TestimonialCard key={testimonial.id || idx} testimonial={testimonial} />
+              ))}
+            </div>
+            {avis.length > AVIS_PAR_PAGE && (
+              <button className="avis-arrow right" onClick={handleNextAvis}>&gt;</button>
+            )}
           </div>
         </div>
+        {modalAvisOpen && <ModalAvis onClose={() => setModalAvisOpen(false)} ajouterAvis={ajouterAvis} API_URL={API_URL} />}
       </section>
 
       {/* Formulaire de Devis */}
@@ -434,6 +468,188 @@ function App() {
         <button onClick={scrollToTop} className="back-to-top" aria-label="Retour en haut">
           ↑
         </button>
+      )}
+    </div>
+  );
+}
+
+// Composant ModalAvis
+function ModalAvis({ onClose, ajouterAvis, API_URL }) {
+  const [prenom, setPrenom] = useState("");
+  const [nom, setNom] = useState("");
+  const [ville, setVille] = useState("");
+  const [texte, setTexte] = useState("");
+  const [note, setNote] = useState(5);
+  const [avatar, setAvatar] = useState("👩‍💼");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const avatars = ["👩‍💼", "👨‍💻", "👩‍🏫", "👨‍🔧", "👩‍🔬", "👨‍🍳", "👩‍🎨", "👨‍🚒", "👩‍🚀", "👨‍⚕️"];
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!prenom.trim() || !nom.trim() || !ville.trim() || !texte.trim()) {
+      setError("Tous les champs sont obligatoires.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccess(false);
+    try {
+      // Construire l'objet avis au bon format pour json-server
+      const nouvelAvis = {
+        name: prenom + ' ' + nom,
+        city: ville,
+        text: texte,
+        rating: note,
+        avatar: avatar
+      };
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nouvelAvis),
+      });
+      const avisAjoute = await res.json();
+      ajouterAvis(avisAjoute);
+      setPrenom("");
+      setNom("");
+      setVille("");
+      setTexte("");
+      setNote(5);
+      setAvatar("👩‍💼");
+      setSuccess(true);
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } catch (e) {
+      setError("Erreur lors de l'envoi de l'avis.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="modal-avis-overlay">
+      <div className="modal-avis">
+        <button className="modal-avis-close" onClick={onClose}>&times;</button>
+        <div className="modal-avis-title"><span className="modal-avis-emoji">📝</span> Laisser un avis</div>
+        <form onSubmit={handleSubmit} className="modal-avis-form">
+          <div className="modal-avis-row">
+            <div className="modal-avis-field">
+              <label htmlFor="prenom">Prénom</label>
+              <input
+                id="prenom"
+                type="text"
+                placeholder="Votre prénom"
+                value={prenom}
+                onChange={e => setPrenom(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <div className="modal-avis-field">
+              <label htmlFor="nom">Nom</label>
+              <input
+                id="nom"
+                type="text"
+                placeholder="Votre nom"
+                value={nom}
+                onChange={e => setNom(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+          </div>
+          <div className="modal-avis-row">
+            <div className="modal-avis-field">
+              <label htmlFor="ville">Ville</label>
+              <input
+                id="ville"
+                type="text"
+                placeholder="Votre ville (ex : Rouen)"
+                value={ville}
+                onChange={e => setVille(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <div className="modal-avis-field">
+              <label>Avatar</label>
+              <div className="modal-avis-avatar">
+                <select value={avatar} onChange={e => setAvatar(e.target.value)} disabled={loading}>
+                  {avatars.map((a,i) => (
+                    <option key={i} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div className="modal-avis-field">
+            <label htmlFor="texte">Votre avis</label>
+            <textarea
+              id="texte"
+              value={texte}
+              onChange={e => setTexte(e.target.value)}
+              placeholder="Exprimez votre expérience..."
+              rows={2}
+              disabled={loading}
+              required
+            />
+          </div>
+          <div className="modal-avis-field">
+            <label>Note</label>
+            <div className="modal-avis-note">
+              {[1,2,3,4,5].map(n => (
+                <span
+                  key={n}
+                  className={n <= note ? "star selected" : "star"}
+                  onClick={() => setNote(n)}
+                  style={{cursor:'pointer'}}
+                >⭐</span>
+              ))}
+            </div>
+          </div>
+          <button type="submit" disabled={loading}>
+            {loading ? "Envoi..." : "Envoyer"}
+          </button>
+        </form>
+        {error && <div className="modal-avis-error">{error}</div>}
+        {success && <div className="modal-avis-success">Merci pour votre avis !</div>}
+      </div>
+    </div>
+  );
+}
+
+// Nouveau composant pour chaque card d'avis
+function TestimonialCard({ testimonial }) {
+  const [voirPlus, setVoirPlus] = useState(false);
+  const TEXTE_MAX = 180;
+  const texteLong = testimonial.text && testimonial.text.length > TEXTE_MAX;
+  const texteCourt = texteLong && !voirPlus;
+  return (
+    <div className="testimonial-card">
+      <div className="testimonial-header">
+        <div className="testimonial-avatar">{testimonial.avatar}</div>
+        <div className="testimonial-info">
+          <h4>{testimonial.name}</h4>
+          <span className="testimonial-city">{testimonial.city}</span>
+        </div>
+        <div className="testimonial-rating">
+          {[...Array(testimonial.rating)].map((_, i) => (
+            <span key={i} className="star">⭐</span>
+          ))}
+        </div>
+      </div>
+      <p className={
+        'testimonial-text' + (voirPlus ? ' overflow' : '')
+      }>
+        "{texteCourt ? testimonial.text.slice(0, TEXTE_MAX) + '...' : testimonial.text}"
+      </p>
+      {texteLong && !voirPlus && (
+        <span className="voir-plus" onClick={() => setVoirPlus(true)}>voir tout</span>
+      )}
+      {texteLong && voirPlus && (
+        <span className="voir-moins" onClick={() => setVoirPlus(false)}>voir moins</span>
       )}
     </div>
   );
